@@ -1,4 +1,5 @@
 use crate::{
+    angle::{Angle, ToAngle},
     mesh::{Mesh, Mesher},
     primitives::{
         make_axis_1, make_axis_2, make_dir, make_point, make_point2d, make_vec, BooleanShape,
@@ -645,6 +646,39 @@ impl Shape {
         let location = ffi::TopLoc_Location_from_transform(&transform);
 
         self.inner.pin_mut().set_global_translation(&location, false);
+    }
+
+    #[must_use]
+    pub fn duplicate(&self) -> Self {
+        let shape_ref = self.inner.as_ref().expect("shape");
+        Self::from_shape(shape_ref)
+    }
+
+    #[must_use]
+    pub fn translate(&self, offset: DVec3) -> Self {
+        self.transform(offset, dvec3(1.0, 0.0, 0.0), 0.0.degrees())
+    }
+
+    #[must_use]
+    pub fn rotate(&self, axis: DVec3, angle: Angle) -> Self {
+        self.transform(DVec3::ZERO, axis, angle)
+    }
+
+    #[must_use]
+    pub fn transform(&self, translation: DVec3, rotation_axis: DVec3, angle: Angle) -> Self {
+        let mut transform = ffi::new_transform();
+        let rotation_axis_vec =
+            ffi::gp_Ax1_ctor(&make_point(DVec3::ZERO), &make_dir(rotation_axis));
+        let translation_vec = make_vec(translation);
+
+        transform.pin_mut().SetRotation(&rotation_axis_vec, angle.radians());
+        transform.pin_mut().set_translation_vec(&translation_vec);
+
+        let shape_ref = self.inner.as_ref().expect("shape");
+        let mut brep_transform = ffi::BRepBuilderAPI_Transform_ctor(shape_ref, &transform, false);
+        let transformed_shape = brep_transform.pin_mut().Shape();
+
+        Self::from_shape(transformed_shape)
     }
 
     pub fn mesh(&self) -> Result<Mesh, Error> {
